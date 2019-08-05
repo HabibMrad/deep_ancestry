@@ -1,6 +1,35 @@
-import numpy as np
-from random import sample, uniform, choice
+from random import randint, sample, uniform, choice, seed
 from operator import add
+import gzip
+from linecache import getline
+
+
+def optionalWrite(outfilename, num_sims, mode):
+	# not opening the training or testing files if they are not requested
+	if num_sims > 0:
+		simulated_genotypes_file = gzip.open(f"{outfilename}.{mode}.gz", "wb")
+		pops_file = gzip.open(f"{outfilename}.pops.{mode}.gz", "wb")
+		if mode == "train":
+			info_file = gzip.open(f"{outfilename}.info.train.gz", "wb")
+			return simulated_genotypes_file, pops_file, info_file
+		else:
+			return simulated_genotypes_file, pops_file
+
+
+def optionalRead(outfilename, num_sims, mode):
+	# not opening the existing training or testing files if they are not requested
+	if num_sims > 0:
+		simulated_genotypes_file = gzip.open(f"{outfilename}.{mode}.gz", "ab")
+		pops_file = gzip.open(f"{outfilename}.pops.{mode}.gz", "ab")
+		if mode == "train":
+			# get previous number of simulations
+			old_info = gzip.open(f"{outfilename}.info.train.gz", "rt")
+			old_num_sims = old_info.readlines()[2]
+			# write it new
+			info_file = gzip.open(f"{outfilename}.info.train.gz", "wb")
+			return simulated_genotypes_file, pops_file, info_file, old_num_sims
+		else:
+			return simulated_genotypes_file, pops_file
 
 
 def find_limit_hap(list_tuples_of_file_and_pop, fraction):
@@ -42,20 +71,20 @@ def create_haplotypes_matrices(list_tuples_of_file_and_pop, subset, limit_hap):
 
 
 def get_random_indexes(length_hap_matrix):
-	# gets 4 ints from 0 to the number of haplotypes for then picking 4 random parent haplotypes
+	# gets 4 ints from 0 to the number of haplotypes - 1 for then picking 4 random parent haplotypes
 	hap0, hap1, hap2, hap3 = 0, 0, 0, 0
 	# do not allow repeating same index
 	while len({hap0, hap1, hap2, hap3}) < 4:
-		hap0 = np.random.randint(length_hap_matrix)
-		hap1 = np.random.randint(length_hap_matrix)
-		hap2 = np.random.randint(length_hap_matrix)
-		hap3 = np.random.randint(length_hap_matrix)
+		hap0 = randint(0, length_hap_matrix - 1)
+		hap1 = randint(0, length_hap_matrix - 1)
+		hap2 = randint(0, length_hap_matrix - 1)
+		hap3 = randint(0, length_hap_matrix - 1)
 	return {'hap0': hap0, 'hap1': hap1, 'hap2': hap2, 'hap3': hap3}
 
 
 def get_random_parent_haps(haplotype_matrix, random_integers):
 	# pick 4 random parent haplotypes
-	# WARNING: notice that the same haplotype can be picked more than once
+	# notice that the same haplotype can be picked more than once
 	parent_haplotypes = dict()
 	parent_haplotypes['hap0'] = haplotype_matrix[random_integers['hap0']]
 	parent_haplotypes['hap1'] = haplotype_matrix[random_integers['hap1']]
@@ -135,7 +164,7 @@ def mutations_geno(geno_offspring, num_mutations):
 	list_positions = [pos for pos in range(len(geno_offspring))]
 	for mutation in range(num_mutations):
 		# random position for mutation and remove position from list, so it is not chosen again
-		mutated_pos = np.random.choice(list_positions)
+		mutated_pos = choice(list_positions)
 		list_positions.remove(mutated_pos)
 		# get locus genotype in that position
 		mutated_locus = geno_offspring[mutated_pos]
@@ -143,7 +172,7 @@ def mutations_geno(geno_offspring, num_mutations):
 		if mutated_locus in [0, 2]:
 			new_genotype = 1
 		else:
-			new_genotype = np.random.choice([0, 2])
+			new_genotype = choice([0, 2])
 		# apply mutation to phased genotypes
 		geno_offspring[mutated_pos] = new_genotype
 	return geno_offspring
@@ -153,7 +182,7 @@ def mutations_01(phased_geno_offspring, num_mutations):
 	list_positions = [pos for pos in range(len(phased_geno_offspring))]
 	for mutation in range(num_mutations):
 		# random position for mutation and remove position from list, so it is not chosen again
-		mutated_pos = np.random.choice(list_positions)
+		mutated_pos = choice(list_positions)
 		list_positions.remove(mutated_pos)
 		# get locus genotype in that position
 		mutated_locus = phased_geno_offspring[mutated_pos]
@@ -172,15 +201,15 @@ def mutations_0123(phased_geno_offspring, num_mutations):
 	list_positions = [pos for pos in range(len(phased_geno_offspring))]
 	for mutation in range(num_mutations):
 		# random position for mutation and remove position from list, so it is not chosen again
-		mutated_pos = np.random.choice(list_positions)
+		mutated_pos = choice(list_positions)
 		list_positions.remove(mutated_pos)
 		# get locus genotype in that position
 		mutated_locus = phased_geno_offspring[mutated_pos]
 		# mutate
 		if mutated_locus in [0, 3]:
-			new_genotype = np.random.choice([1, 2])
+			new_genotype = choice([1, 2])
 		else:
-			new_genotype = np.random.choice([0, 3])
+			new_genotype = choice([0, 3])
 		# apply mutation to phased genotypes
 		phased_geno_offspring[mutated_pos] = new_genotype
 
@@ -231,32 +260,39 @@ def simulated_genotypes_0123(offspring_phased_haplotypes, num_mutations):
 
 
 def chunks_per_pop(list_pops, props_pop, num_rcs):
+
+	# normalize so props sum 1
 	if sum(props_pop) is not 1:
-		# normalize so props sum 1
 		sum_props = sum(props_pop)
 		props_pop = [prop / sum_props for prop in props_pop]
+
 	chunks_per_pop = dict()
-	num_chunks = num_rcs + 1
+	num_exp_chunks = num_rcs + 1
+
+	# pops with 0 chunks as defined in arguments
 	zero_pops = []
 	for pop, prop in zip(list_pops, props_pop):
 		if prop == 0:
 			zero_pops.append(pop)
-		chunks_per_pop[pop] = round(prop * num_chunks)
-	# check that the nº of chunks per pop add up to the nº of recombinations + 1
-	total_chunks = sum(chunks_per_pop.values())
-	if total_chunks != num_chunks:
-		if total_chunks == num_chunks + 1:
-			random_pop = np.random.choice(list_pops)
-			while random_pop in zero_pops:
-				random_pop = np.random.choice(list_pops)
-			chunks_per_pop[random_pop] = chunks_per_pop[random_pop] - 1
-		elif total_chunks == num_chunks - 1:
-			random_pop = np.random.choice(list_pops)
-			while random_pop in zero_pops:
-				random_pop = np.random.choice(list_pops)
-			chunks_per_pop[random_pop] = chunks_per_pop[random_pop] + 1
+		chunks_per_pop[pop] = round(prop * num_exp_chunks)
+
+	# check that the observed nº of chunks per pop add up to the expected total nº of chunks (nº of recombinations + 1)
+	num_obs_chunks = sum(chunks_per_pop.values())
+	if num_obs_chunks != num_exp_chunks:
+		if num_obs_chunks > num_exp_chunks:
+			while num_obs_chunks > num_exp_chunks:
+				random_pop = choice(list_pops)
+				while random_pop in zero_pops:
+					random_pop = choice(list_pops)
+				chunks_per_pop[random_pop] = chunks_per_pop[random_pop] - 1
+				num_obs_chunks = sum(chunks_per_pop.values())
 		else:
-			exit("Report bug: total chunks ≠ num chunks AND total chunks ≠ num chunks ± 1")
+			while num_obs_chunks < num_exp_chunks:
+				random_pop = choice(list_pops)
+				while random_pop in zero_pops:
+					random_pop = choice(list_pops)
+				chunks_per_pop[random_pop] = chunks_per_pop[random_pop] + 1
+				num_obs_chunks = sum(chunks_per_pop.values())
 
 	return chunks_per_pop
 
@@ -282,8 +318,8 @@ def ancestral_haps(haplotypes):
 		index0, index1 = 0, 0
 		# do not allow repeating same index
 		while len({index0, index1}) < 2:
-			index0 = np.random.randint(length_hap_matrix)
-			index1 = np.random.randint(length_hap_matrix)
+			index0 = randint(0, length_hap_matrix - 1)
+			index1 = randint(0, length_hap_matrix - 1)
 		# get haplotypes corresponding to indexes
 		hap0 = haplotypes[pop][index0]
 		hap1 = haplotypes[pop][index1]
@@ -356,11 +392,10 @@ def crossovers_admix(list_pops, props_pop, ancestral_haplotypes, random_cuts, nu
 		for parent in ['parent1', 'parent2']:
 			chunk_pop = lists_chunks[parent].pop(0)
 			# store the non-recombinant chromosome
-			dict_parents[parent] = ancestral_haplotypes[chunk_pop][parent]
+			dict_parents[parent] = ancestral_haplotypes[chunk_pop][parent] , ['2nd element for compatibility with simulated_genotypes*()']
 			final_prop_pops[chunk_pop] += num_snps
 
 	# calculate final proportion per population
 	for pop in final_prop_pops:
 		final_prop_pops[pop] = str(final_prop_pops[pop] / (num_snps * 2))
-
 	return dict_parents, list(final_prop_pops.values())
