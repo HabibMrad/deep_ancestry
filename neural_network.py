@@ -5,6 +5,7 @@ import numpy as np
 import gzip
 from argparse import ArgumentParser
 from datetime import datetime
+from time import time
 
 
 # DEFAULT: ReLU(inner), Softmax(out), cross-entropy, Adam
@@ -15,14 +16,15 @@ parser.add_argument('-test', type=str, default = False, help='Path and name pref
 parser.add_argument('-save', action='store_true', help='Save model')
 parser.add_argument('-load', type=str, default=False, help='Import and use model matching current settings')
 parser.add_argument('-epoch', type=int, default=1, help='Number of epochs to run on the same training set')
-parser.add_argument('-inner', type=int, default=0, help='Number of inner layers')
+parser.add_argument('-inner', type=int, default=1, help='Number of inner layers')
 parser.add_argument('-neurons', type=int, nargs='*', default=[1000], help='List of the number of neurons per inner layer, ordered')
 parser.add_argument('-drop', type=float, default=0., help='Proportion of neurons to drop out in each training run')
 parser.add_argument('-trbatch', type=int, default=50, help='Number of simulated samples per training batch')
 parser.add_argument('-tsbatch', type=int, default=10000, help='Number of simulated samples per testing batch')
 parser.add_argument('-optim', type=str, default='Adam', help='Optimizer algorithm, Adam by default, GradientDescent optional')
 parser.add_argument('-rate', type=float, default=0.001, help='Learning rate')
-parser.add_argument('-cost', type=float, default=0., help='Cost that, if reached, causes the training to finish')
+parser.add_argument('-cost', type=float, default=0., help='Cost that, if reached, causes the training epoch to finish')
+parser.add_argument('-time', type=float, default=False, help='Time in minutes that, if reached, causes the training epoch to finish')
 parser.add_argument('-cnst', type=float, default=1e-10, help='Tiny constant added to limit low extremes in soft label of admixed individuals (default 1e-10) so there are no log(0) == Nan')
 parser.add_argument('-display', type=int, default=10, help='Batch interval to show')
 parser.add_argument('-log', type=str, default=False, help='Path for log files')
@@ -33,7 +35,11 @@ args = parser.parse_args()
 train_set = args.train
 
 if args.seed:
-	tf.set_random_seed(args.seed)
+	current_seed = args.seed
+else:
+	current_seed = int(str(datetime.now()).split('.')[1])
+
+tf.set_random_seed(current_seed)
 
 with gzip.open(f"{train_set}.train.gz", "rt") as training_genotypes, \
 	gzip.open(f"{train_set}.pops.train.gz", "rt") as training_pops, \
@@ -181,17 +187,24 @@ with gzip.open(f"{train_set}.train.gz", "rt") as training_genotypes, \
 	## Launch the graph
 	with tf.Session() as sess:
 
+		# print log message
+		print(f"\n\nRunning {epochs} epochs using {neurons_input} SNPs, {num_inner} inner layers of {neurons_inner} neurons each, dropping out {dropout * 100}% neurons, guessing {neurons_output} populations, applying a learning rate of {learning_rate} on a batch size of {training_batch_size} over {num_simulations} training simulations until reaching a cost = {final_cost}, using the {optim}Optimizer algorithm. If testing, using a batch size of {testing_batch_size} simulations. Seed {current_seed}\n")
+		# identify model
+		model_id = f"{neurons_input}SNPs_{num_inner}inner_{str(neurons_inner).replace('[', '').replace(']', '_')}innerneurons_{dropout}dropout_{neurons_output}populations_{learning_rate}lrate_{training_batch_size}trbatch_{num_simulations}_{optim}optimizer_{final_cost}cost_{current_seed}seed"
+
 		if args.load is False:
 			sess.run(init)
 		else:
-			saver.restore(sess, tf.train.latest_checkpoint('saved_models/'))
+			print(f"\nloading saved_models/{model_id}/\n")
+			saver.restore(sess, tf.train.latest_checkpoint(f"saved_models/{model_id}/"))
 
 		if args.log:
 			# save logs
 			summary_writer = tf.summary.FileWriter(args.log, graph=sess.graph)
 
-		# print log message
-		print(f"\n\nRunning {epochs} epochs using {neurons_input} SNPs, {num_inner} inner layers of {neurons_inner} neurons each, dropping out {dropout * 100}% neurons, guessing {neurons_output} populations, applying a learning rate of {learning_rate} on a batch size of {training_batch_size} over {num_simulations} training simulations until reaching a cost = {final_cost}, using the {optim}Optimizer algorithm. Then, testing using a batch size of {testing_batch_size} simulations...\n")
+		# set starting time
+		if args.time:
+			start_time = time()
 
 		# Training cycle (nº trained ANN)
 		if args.load != "notrain":
@@ -230,21 +243,27 @@ with gzip.open(f"{train_set}.train.gz", "rt") as training_genotypes, \
 					# finish training if reached error
 					if cost <= final_cost:
 						break
-
+					# finish training if reached limit time
+					if args.time:
+						time_passed = (time() - start_time) / 60
+						if time_passed >= args.time:
+							print(f"Reached {args.time} minutes of training, exiting...\n")
+							break
 					# # Create a checkpoint in every iteration
 					# saver.save(sess, 'model_iter', global_step=batch)
 
 				# Display logs per ANN
 				print(f"Finished epoch nº{iteration + 1}; final batch avg.cost = {'%.9f' % cost}; epoch cost = {epoch_cost / batch}\n")
-				print("Output weights: ", W_out.values())
-				print("Output betas: ", b_out.values())
-				print(f"For visualization on TensorBoard, type: tensorboard --logdir={args.log}/\n")
+				print("Output weights: ", W_out.eval(), "\n")
+				print("Output betas: ", b_out.eval(), "\n")
+				if args.log is not False:
+					print(f"For visualization on TensorBoard, type: tensorboard --logdir={args.log}/\n")
 
 			if args.save is not False:
 				# save the model
 				date, time = str(datetime.now()).split()
 				datetime = date.replace('-', '_') + '_' + time.split('.')[0].replace(':', '_')
-				saver.save(sess, f"saved_models/{neurons_input}SNPs_{num_inner}inner_{str(neurons_inner).replace('[', '').replace(']', '_')}innerneurons_{dropout}dropout_{neurons_output}populations_{learning_rate}lrate_{training_batch_size}trbatch_{num_simulations}_{optim}optimizer_{final_cost}cost_{datetime}")
+				saver.save(sess, f"saved_models/{model_id}/{model_id}_{datetime}")
 
 		if args.test is not False:
 			## Test the ANN and calculate accuracy

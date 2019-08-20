@@ -234,8 +234,8 @@ def simulated_genotypes_geno(offspring_phased_haplotypes, num_mutations):
 def simulated_genotypes_01(offspring_phased_haplotypes, num_mutations):
 	# output the phased genotypes in 2-digit format (poss. digits: 0/1), for feeding to the NN
 
-	phased_geno_offspring = [allele for genotype in zip(offspring_phased_haplotypes["parent1_recomb"][0],
-														offspring_phased_haplotypes["parent2_recomb"][0]) for allele in genotype]
+	phased_geno_offspring = [allele for genotype in zip(offspring_phased_haplotypes[list(offspring_phased_haplotypes.keys())[0]][0],
+														offspring_phased_haplotypes[list(offspring_phased_haplotypes.keys())[1]][0]) for allele in genotype]
 	if num_mutations > 0:
 		return mutations_01(phased_geno_offspring, num_mutations)
 	else:
