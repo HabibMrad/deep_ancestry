@@ -1,2 +1,2 @@
 # deep ancestry
-Global ancestry inference with deep learning
+Tool for inferring global ancestry proportions in admixed samples using deep learning

@@ -11,7 +11,7 @@ from setuptools import find_packages, setup, Command
 
 # meta-data
 NAME = 'deep_ancestry'
-DESCRIPTION = 'Global ancestry inference with deep learning.'
+DESCRIPTION = 'Tool for inferring global ancestry proportions in admixed samples using deep learning'
 URL = 'https://github.com/mmaalvarez/deep_ancestry'
 EMAIL = 'alvarez.miguel.martin@gmail.com'
 AUTHOR = 'MM Álvarez'
