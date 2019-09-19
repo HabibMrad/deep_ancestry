@@ -1,0 +1,21 @@
+Metadata-Version: 2.1
+Name: deep-ancestry
+Version: 0.1.0
+Summary: Global ancestry inference with deep learning.
+Home-page: https://github.com/mmaalvarez/deep_ancestry
+Author: MM Álvarez
+Author-email: alvarez.miguel.martin@gmail.com
+License: MIT
+Description: 
+        # deep ancestry
+        Global ancestry inference with deep learning
+        
+Platform: UNKNOWN
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Programming Language :: Python :: Implementation :: PyPy
+Requires-Python: >=3.6.0
+Description-Content-Type: text/markdown
